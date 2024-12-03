@@ -11,9 +11,16 @@
 #Weights
 *pth
 *tar
+*pkl
+*npy
 
+#Images
+input*/*
+*jpg
+*png
 #Demo output
 output*/*
+output_stitching*/*
 
 #Experiments
 experiments/*
