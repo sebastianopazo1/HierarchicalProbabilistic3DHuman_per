@@ -111,14 +111,15 @@ def run_predict(device,
         visualise_uncropped=visualise_uncropped,
         visualise_samples=visualise_samples
     )
-    print(predictions)
-    # Save predictions as OBJ files if available
+    #print(predictions)
+    
     if predictions is not None:
         try:
             for idx, pred in enumerate(predictions):
                 if 'vertices' in pred and pred['vertices'] is not None:
-                    vertices = pred['vertices'][0].cpu().numpy()
-                    faces = smpl_model.faces.cpu().numpy()
+                    # Ensure vertices and faces are PyTorch tensors and move to CPU before converting to numpy
+                    vertices = pred['vertices'][0].cpu().numpy() if torch.is_tensor(pred['vertices']) else pred['vertices'][0]
+                    faces = pred['faces'].cpu().numpy() if torch.is_tensor(pred['faces']) else pred['faces']
                     
                     obj_filename = f'prediction_{idx:04d}.obj'
                     obj_path = os.path.join(obj_save_dir, obj_filename)
@@ -128,6 +129,9 @@ def run_predict(device,
                     print(f"Warning: No vertices found in prediction {idx}")
         except Exception as e:
             print(f"Error processing predictions: {str(e)}")
+            # Add additional debug information
+            print(f"Type of vertices: {type(pred['vertices'])}")
+            print(f"Type of faces: {type(pred['faces'])}")
     else:
         print("Warning: No predictions were generated")
 

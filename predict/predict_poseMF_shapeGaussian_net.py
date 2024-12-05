@@ -55,6 +55,9 @@ def predict_poseMF_shapeGaussian_net(pose_shape_model,
     pose_shape_model.eval()
     if object_detect_model is not None:
         object_detect_model.eval()
+
+    predictions = [] 
+
     for image_fname in tqdm(sorted([f for f in os.listdir(image_dir) if f.endswith(('.jpg', '.png'))])):
         with torch.no_grad():
             # ------------------------- INPUT LOADING AND PROXY REPRESENTATION GENERATION -------------------------
@@ -232,6 +235,27 @@ def predict_poseMF_shapeGaussian_net(pose_shape_model,
                                                            cam_t=fixed_cam_t,
                                                            orthographic_scale=fixed_orthographic_scale,
                                                            lights_rgb_settings=lights_rgb_settings)['rgb_images'].cpu().detach().numpy()[0]
+            
+            prediction = {
+                'image_name': image_fname,
+                'vertices': pred_vertices_mode.detach(),
+                'faces': torch.tensor(smpl_model.faces.astype(np.int32), device=device),  # Convert uint32 to int32
+                'pose_params': {
+                    'pose_rotmats': pred_pose_rotmats_mode.detach(),
+                    'global_orient': pred_glob_rotmats.detach(),
+                    'betas': pred_shape_dist.loc.detach()
+                },
+                'camera_params': {
+                    'scale': orthographic_scale.detach(),
+                    'translation': cam_t.detach()
+                },
+                'joints2D': torch.tensor(hrnet_output['joints2D'], device=device),
+                'joints2D_confidence': torch.tensor(hrnet_output['joints2Dconfs'], device=device),
+                'vertex_uncertainties': per_vertex_3Dvar.detach(),
+                'vertices_samples': pred_vertices_samples.detach() if pred_vertices_samples is not None else None,
+                'joints_samples': pred_joints_samples.detach() if pred_joints_samples is not None else None
+            }
+            predictions.append(prediction)
 
             # Combine all visualisations
             combined_vis_rows = 2
@@ -331,6 +355,7 @@ def predict_poseMF_shapeGaussian_net(pose_shape_model,
 
                     samples_fig_save_path = os.path.splitext(vis_save_path)[0] + '_samples.png'
                     cv2.imwrite(samples_fig_save_path, samples_fig[:, :, ::-1] * 255)
+    return predictions
 
 
 
