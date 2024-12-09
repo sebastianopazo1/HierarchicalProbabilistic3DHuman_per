@@ -3,6 +3,7 @@ import torch
 import torchvision
 import numpy as np
 import argparse
+import json
 
 from models.poseMF_shapeGaussian_net import PoseMFShapeGaussianNet
 from models.smpl_official import SMPL
@@ -14,8 +15,19 @@ from configs.pose2D_hrnet_config import get_pose2D_hrnet_cfg_defaults
 from configs import paths
 
 from predict.predict_poseMF_shapeGaussian_net import predict_poseMF_shapeGaussian_net
+def save_blendshapes_to_json(predictions, save_path):
 
+    blendshapes_dict = {}
+    for i, pred in enumerate(predictions):
+        betas = pred_shape_dist.loc.cpu().numpy().tolist()[0]  # Asumiendo que es un tensor
+        image_name = f"prediction_{i}"
+        blendshapes_dict[image_name] = {
+            'betas': betas
+        }
+    with open(save_path, 'w') as f:
+        json.dump(blendshapes_dict, f, indent=4)
 
+        
 def run_predict(device,
                 image_dir,
                 save_dir,
@@ -74,7 +86,7 @@ def run_predict(device,
     # ------------------------- Predict -------------------------
     torch.manual_seed(0)
     np.random.seed(0)
-    predict_poseMF_shapeGaussian_net(pose_shape_model=pose_shape_dist_model,
+    predictions = predict_poseMF_shapeGaussian_net(pose_shape_model=pose_shape_dist_model,
                                      pose_shape_cfg=pose_shape_cfg,
                                      smpl_model=smpl_model,
                                      hrnet_model=hrnet_model,
@@ -87,6 +99,10 @@ def run_predict(device,
                                      joints2Dvisib_threshold=joints2Dvisib_threshold,
                                      visualise_uncropped=visualise_uncropped,
                                      visualise_samples=visualise_samples)
+    
+    json_save_path = os.path.join(save_dir, 'blendshapes.json') 
+    save_blendshapes_to_json(predictions['blendshapes'], json_save_path)
+    print(f'\nBlendshapes guardados en: {json_save_path}')
 
 
 if __name__ == '__main__':

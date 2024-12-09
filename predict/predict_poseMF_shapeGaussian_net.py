@@ -245,6 +245,7 @@ def predict_poseMF_shapeGaussian_net(pose_shape_model,
                     'global_orient': pred_glob_rotmats.detach(),
                     'betas': pred_shape_dist.loc.detach()
                 },
+                'blendshapes': pred_shape_dist.loc.detach(),
                 'camera_params': {
                     'scale': orthographic_scale.detach(),
                     'translation': cam_t.detach()
