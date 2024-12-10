@@ -15,19 +15,33 @@ from configs.pose2D_hrnet_config import get_pose2D_hrnet_cfg_defaults
 from configs import paths
 
 from predict.predict_poseMF_shapeGaussian_net import predict_poseMF_shapeGaussian_net
-def save_blendshapes_to_json(predictions, save_path):
 
+def save_blendshapes_to_json(blendshapes, save_path):
+ 
     blendshapes_dict = {}
-    for i, pred in enumerate(predictions):
-        betas = pred_shape_dist.loc.cpu().numpy().tolist()[0]  # Asumiendo que es un tensor
+    
+    # Si es un solo tensor, convertirlo a lista
+    if torch.is_tensor(blendshapes):
+        blendshapes = [blendshapes]
+        
+    for i, betas in enumerate(blendshapes):
+        # Convertir tensor a lista y asegurarse que está en CPU
+        if torch.is_tensor(betas):
+            betas = betas.cpu().numpy().tolist()
+        
         image_name = f"prediction_{i}"
         blendshapes_dict[image_name] = {
             'betas': betas
         }
+    
+    # Crear el directorio si no existe
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    # Guardar en JSON con formato legible
     with open(save_path, 'w') as f:
         json.dump(blendshapes_dict, f, indent=4)
 
-        
+
 def run_predict(device,
                 image_dir,
                 save_dir,
@@ -100,9 +114,12 @@ def run_predict(device,
                                      visualise_uncropped=visualise_uncropped,
                                      visualise_samples=visualise_samples)
     
-    json_save_path = os.path.join(save_dir, 'blendshapes.json') 
-    save_blendshapes_to_json(predictions['blendshapes'], json_save_path)
-    print(f'\nBlendshapes guardados en: {json_save_path}')
+    json_save_path = os.path.join(save_dir, 'blendshapes.json')
+    if 'blendshapes' in predictions:
+        save_blendshapes_to_json(predictions['pose_params'], json_save_path)
+        print(f'\nBlendshapes guardados en: {json_save_path}')
+    else:
+        print('\nAdvertencia: No se encontraron blendshapes en las predicciones')
 
 
 if __name__ == '__main__':

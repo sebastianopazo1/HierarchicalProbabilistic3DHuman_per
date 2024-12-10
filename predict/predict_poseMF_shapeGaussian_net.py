@@ -257,7 +257,7 @@ def predict_poseMF_shapeGaussian_net(pose_shape_model,
                 'joints_samples': pred_joints_samples.detach() if pred_joints_samples is not None else None
             }
             predictions.append(prediction)
-
+            print(pred_shape_dist.loc.detach())
             # Combine all visualisations
             combined_vis_rows = 2
             combined_vis_cols = 4

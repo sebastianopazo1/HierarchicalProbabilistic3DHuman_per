@@ -3,6 +3,7 @@ import torch
 import torchvision
 import numpy as np
 import argparse
+import json
 
 from models.poseMF_shapeGaussian_net import PoseMFShapeGaussianNet
 from models.smpl_official import SMPL
@@ -12,7 +13,7 @@ from models.canny_edge_detector import CannyEdgeDetector
 from configs.poseMF_shapeGaussian_net_config import get_poseMF_shapeGaussian_cfg_defaults
 from configs.pose2D_hrnet_config import get_pose2D_hrnet_cfg_defaults
 from configs import paths
-
+from utils.joints2d_utils import undo_keypoint_normalisation
 from predict.predict_poseMF_shapeGaussian_net import predict_poseMF_shapeGaussian_net
 
 def save_mesh_as_obj(out_path, vertices, faces):
@@ -89,8 +90,10 @@ def run_predict(device,
     print('\nLoaded Distribution Predictor weights from', pose_shape_weights_path)
 
     # Create directory for OBJ files
+    json_save_dir = os.path.join(save_dir, 'joint_data')
     obj_save_dir = os.path.join(save_dir, 'obj_files')
     os.makedirs(obj_save_dir, exist_ok=True)
+    os.makedirs(json_save_dir, exist_ok=True)
 
     # ------------------------- Predict -------------------------
     torch.manual_seed(0)
@@ -111,27 +114,85 @@ def run_predict(device,
         visualise_uncropped=visualise_uncropped,
         visualise_samples=visualise_samples
     )
-    #print(predictions)
-    
+   
     if predictions is not None:
+        obj_save_dir = os.path.join(save_dir, 'obj_files')
+        json_save_dir = os.path.join(save_dir, 'joint_data')
+        os.makedirs(obj_save_dir, exist_ok=True)
+        os.makedirs(json_save_dir, exist_ok=True)
+
+        pelvis_positions = {}
+        
+        # Imprimir información de debug
+        print("Number of predictions:", len(predictions))
+        if len(predictions) > 0:
+            print("Keys in first prediction:", predictions[0].keys())
+
         try:
             for idx, pred in enumerate(predictions):
-                if 'vertices' in pred and pred['vertices'] is not None:
-                    # Ensure vertices and faces are PyTorch tensors and move to CPU before converting to numpy
-                    vertices = pred['vertices'][0].cpu().numpy() if torch.is_tensor(pred['vertices']) else pred['vertices'][0]
-                    faces = pred['faces'].cpu().numpy() if torch.is_tensor(pred['faces']) else pred['faces']
-                    
-                    obj_filename = f'prediction_{idx:04d}.obj'
-                    obj_path = os.path.join(obj_save_dir, obj_filename)
-                    
-                    save_mesh_as_obj(obj_path, vertices, faces)
-                else:
-                    print(f"Warning: No vertices found in prediction {idx}")
+                # Obtener dimensiones originales de la imagen
+                orig_height = pred.get('orig_height', None)
+                orig_width = pred.get('orig_width', None)
+                uncropped_bb = pred.get('uncropped_bb', None)
+
+                # Debug info
+                print(f"\nProcessing prediction {idx}")
+                print(f"Original dimensions: {orig_width}x{orig_height}")
+                print(f"Uncropped BB: {uncropped_bb}")
+
+                if 'joints2D' in pred and pred['joints2D'] is not None:
+                    joints2D = pred['joints2D']
+                    if torch.is_tensor(joints2D):
+                        joints2D = joints2D.cpu().numpy()
+
+                    # Extraer coordenadas de la pelvis
+                    if len(joints2D.shape) == 3:
+                        pelvis_2d = joints2D[0, 0].tolist()
+                    else:
+                        pelvis_2d = joints2D[0].tolist()
+
+                    # Convertir coordenadas si es necesario
+                    if uncropped_bb is not None:
+                        # Convertir de coordenadas normalizadas a coordenadas de imagen original
+                        x_scale = (uncropped_bb[2] - uncropped_bb[0]) / pose_shape_cfg.DATA.PROXY_REP_SIZE
+                        y_scale = (uncropped_bb[3] - uncropped_bb[1]) / pose_shape_cfg.DATA.PROXY_REP_SIZE
+                        
+                        orig_x = uncropped_bb[0] + pelvis_2d[0] * x_scale
+                        orig_y = uncropped_bb[1] + pelvis_2d[1] * y_scale
+                    else:
+                        orig_x = pelvis_2d[0]
+                        orig_y = pelvis_2d[1]
+
+                    # Guardar en el diccionario
+                    image_name = pred.get('image_name', f'image_{idx:04d}')
+                    pelvis_positions[image_name] = {
+                        'x': float(orig_x),
+                        'y': float(orig_y),
+                        'image_size': [
+                            int(orig_width) if orig_width is not None else -1,
+                            int(orig_height) if orig_height is not None else -1
+                        ],
+                        'bbox': [
+                            float(uncropped_bb[0]) if uncropped_bb is not None else -1,
+                            float(uncropped_bb[1]) if uncropped_bb is not None else -1,
+                            float(uncropped_bb[2]) if uncropped_bb is not None else -1,
+                            float(uncropped_bb[3]) if uncropped_bb is not None else -1
+                        ]
+                    }
+
+            # Guardar el JSON
+            json_path = os.path.join(json_save_dir, 'pelvis_positions.json')
+            with open(json_path, 'w') as f:
+                json.dump(pelvis_positions, f, indent=4)
+            
+            print(f"\nSaved pelvis positions to {json_path}")
+            print("Sample of saved data:", next(iter(pelvis_positions.items())))
+
         except Exception as e:
             print(f"Error processing predictions: {str(e)}")
-            # Add additional debug information
-            print(f"Type of vertices: {type(pred['vertices'])}")
-            print(f"Type of faces: {type(pred['faces'])}")
+            import traceback
+            traceback.print_exc()
+
     else:
         print("Warning: No predictions were generated")
 
